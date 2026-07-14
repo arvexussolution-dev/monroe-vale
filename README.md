@@ -68,3 +68,13 @@ Kad budete imali fotografije: ubacite ih u `assets/watches/` i u
     watchImages: { hudson: 'assets/watches/hudson.png', ... }
 
 Eclipse automatski koristi hero fotografiju.
+
+## Novo u v3
+
+- **Prave fotografije satova** (assets/watches/) — 5 modela × 5 slika, web-optimizovane. Manhattan čeka fotografije.
+- **Galerija u detaljima**: vertikalna traka thumbnail-a, klik menja glavnu sliku.
+- **"Book a private viewing"** sekundarno dugme + red pogodnosti (garancija / kutija / concierge).
+- **Hover na kartice**: zlatne čestice jure ka posetiocu.
+- **Hero ivice**: utapajuće strane sa treperavim zlatnim "zvezdama".
+- **Performanse**: manje i lakše keširanih frejmova, sekvencijalno keširanje (hero prvi).
+- **Lenis CDN fallback**: sajt više ne zavisi od vendor foldera (ali ga i dalje uploadujte).

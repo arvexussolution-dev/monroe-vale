@@ -61,13 +61,15 @@
     this.video.load();
 
     var self = this;
+    ScrubStage.queue = ScrubStage.queue || [];
     this.video.addEventListener('loadedmetadata', function () {
       self.duration = self.video.duration || 0;
       self.ready = true;
       self.resize();
       // Nudge decode so first paint is instant
       try { self.video.currentTime = 0.001; } catch (e) {}
-      self.startCache();
+      ScrubStage.queue.push(self);
+      if (ScrubStage.queue.length === 1) self.startCache();
     });
     window.addEventListener('resize', function () { self.resize(); });
   }
@@ -90,7 +92,8 @@
     this.caching = true;
 
     var self = this, v = this.video, i = 0, n = this.targetFrames;
-    var fw = Math.min(v.videoWidth || 1280, 1280);
+    var cap = this.opts.frameWidth || 1024;
+    var fw = Math.min(v.videoWidth || 1280, cap);
     var fh = Math.round(fw * ((v.videoHeight || 720) / (v.videoWidth || 1280)));
 
     function grab() {
@@ -105,6 +108,9 @@
         self.caching = false;
         self.frameCount = self.frames.length;
         self.lastDrawn = -1;
+        // Hand the cache slot to the next stage in the queue
+        var q = ScrubStage.queue, at = q.indexOf(self);
+        if (at > -1 && q[at + 1]) q[at + 1].startCache();
         return;
       }
       var t = (i / (n - 1)) * Math.max(0, self.duration - 0.05);
@@ -175,9 +181,9 @@
   }
 
   var stages = [];
-  if (CFG.orbit)   stages.push(new ScrubStage('hero',   'heroVideo',   'heroCanvas',   pick(CFG.orbitLocal, CFG.orbit),   { frames: 120 }));
-  if (CFG.macro)   stages.push(new ScrubStage('macro',  'macroVideo',  'macroCanvas',  pick(CFG.macroLocal, CFG.macro),   { frames: 80 }));
-  if (CFG.engine)  stages.push(new ScrubStage('engine', 'engineVideo', 'engineCanvas', pick(CFG.engineLocal, CFG.engine), { frames: 80 }));
+  if (CFG.orbit)   stages.push(new ScrubStage('hero',   'heroVideo',   'heroCanvas',   pick(CFG.orbitLocal, CFG.orbit),   { frames: 84, frameWidth: 1152 }));
+  if (CFG.macro)   stages.push(new ScrubStage('macro',  'macroVideo',  'macroCanvas',  pick(CFG.macroLocal, CFG.macro),   { frames: 56, frameWidth: 960 }));
+  if (CFG.engine)  stages.push(new ScrubStage('engine', 'engineVideo', 'engineCanvas', pick(CFG.engineLocal, CFG.engine), { frames: 56, frameWidth: 960 }));
 
   /* ---------------- Meridian progress ---------------- */
   var meridianFill = document.getElementById('meridianFill');

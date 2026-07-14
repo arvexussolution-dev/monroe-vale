@@ -11,6 +11,7 @@
 
   var CFG = window.MV_MEDIA || {};
   var IMG = CFG.watchImages || {};
+  var GAL = CFG.watchGalleries || {};
   var prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   var clamp = function (v, a, b) { return Math.min(b, Math.max(a, v)); };
   var easeInOut = function (t) { return t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t; };
@@ -104,6 +105,7 @@
     }
   ];
   CATALOG.forEach(function (w) {
+    w.gal = GAL[w.id] || null;
     if (!w.img) w.img = dialSVG({
       bg: w.pal.bg, caseC: w.pal.caseC, dial: w.pal.dial, index: w.pal.index,
       hand: w.pal.hand, text: w.pal.text, sub: w.pal.sub, second: w.pal.second || null
@@ -258,13 +260,36 @@
   var mSpecs = document.getElementById('modalSpecs');
   var mPrice = document.getElementById('modalPrice');
   var mAdd = document.getElementById('modalAdd');
+  var mView = document.getElementById('modalView');
+  var mThumbs = document.getElementById('modalThumbs');
   var mClose = document.getElementById('modalClose');
   var currentWatch = null;
   var modalOpen = false;
 
+  function setModalImage(srcUrl) {
+    mImg.src = srcUrl;
+    var ts = mThumbs.children;
+    for (var i = 0; i < ts.length; i++) {
+      ts[i].classList.toggle('is-active', ts[i].getAttribute('data-src') === srcUrl);
+    }
+  }
+
   function openModal(w) {
     currentWatch = w;
-    mImg.src = w.img;
+    var gallery = (w.gal && w.gal.length) ? w.gal : [w.img];
+    mThumbs.innerHTML = '';
+    gallery.forEach(function (g, gi) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'modal__thumb' + (gi === 0 ? ' is-active' : '');
+      b.setAttribute('data-src', g);
+      b.setAttribute('aria-label', w.name + ' photo ' + (gi + 1));
+      b.innerHTML = '<img src="' + g + '" alt="" loading="lazy">';
+      b.addEventListener('click', function () { setModalImage(g); });
+      mThumbs.appendChild(b);
+    });
+    mThumbs.style.display = gallery.length > 1 ? '' : 'none';
+    mImg.src = gallery[0];
     mImg.alt = w.name;
     mIdx.textContent = w.tag;
     mName.textContent = w.name;
@@ -277,6 +302,7 @@
     });
     mPrice.textContent = fmt(w.price);
     mAdd.textContent = 'Add to cart';
+    if (mView) mView.textContent = 'Book a private viewing';
     modal.hidden = false;
     modalOpen = true;
     lock();
@@ -295,6 +321,9 @@
     addToCart(currentWatch.id);
     mAdd.textContent = 'Added ✓';
     setTimeout(function () { mAdd.textContent = 'Add to cart'; }, 1400);
+  });
+  if (mView) mView.addEventListener('click', function () {
+    mView.textContent = 'Viewing requested ✓ — we will write';
   });
 
   /* ---------------- Demo cart ---------------- */
