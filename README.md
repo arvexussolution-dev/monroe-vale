@@ -78,3 +78,21 @@ Eclipse automatski koristi hero fotografiju.
 - **Hero ivice**: utapajuće strane sa treperavim zlatnim "zvezdama".
 - **Performanse**: manje i lakše keširanih frejmova, sekvencijalno keširanje (hero prvi).
 - **Lenis CDN fallback**: sajt više ne zavisi od vendor foldera (ali ga i dalje uploadujte).
+
+## Novo u v4 — scroll fix
+
+- **Keširanje na nevidljivom klonu**: vidljivi video više nikad ne "poludi"
+  tokom učitavanja — scroll je odmah odzivan, canvas preuzima tek kad je
+  keš 100% spreman.
+- **Disciplinovani seek**: nema naslaganih seek zahteva (fastSeek gde postoji).
+- **Manhattan Reserve fotografije** (4 kom) ubačene.
+- **Video lokalno sa auto-fallbackom**: config već pokazuje na
+  assets/video/orbit.mp4, macro.mp4, engine.mp4 — dok ti fajlovi ne postoje,
+  sajt sam pada nazad na udaljeni CDN. Preporuka: skini tri klipa (linkovi
+  ispod), preimenuj i uploaduj u assets/video/ — scroll postaje munjevit i
+  nezavisan od tuđeg CDN-a.
+
+Linkovi za preuzimanje (sačuvaj kao orbit.mp4 / macro.mp4 / engine.mp4):
+- orbit:  https://d8j0ntlcm91z4.cloudfront.net/user_3GDmPHEJHZ0gj0bKJ4YoVfVIUHU/hf_20260713_174715_c484b7cc-6e6d-4a03-b351-978c7262d1cf.mp4
+- macro:  https://d8j0ntlcm91z4.cloudfront.net/user_3GDmPHEJHZ0gj0bKJ4YoVfVIUHU/hf_20260713_174726_54dc411b-1ec3-44e4-b223-545907b5e893.mp4
+- engine: https://d8j0ntlcm91z4.cloudfront.net/user_3GDmPHEJHZ0gj0bKJ4YoVfVIUHU/hf_20260713_174925_14d7998c-b823-4ba3-bdd1-a493b04b0e2a.mp4

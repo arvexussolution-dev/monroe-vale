@@ -45,6 +45,9 @@
     this.video = document.getElementById(videoId);
     this.canvas = document.getElementById(canvasId);
     this.ctx = this.canvas.getContext('2d');
+    this.sources = Array.isArray(src) ? src.filter(Boolean) : [src];
+    this.srcIndex = 0;
+    src = this.sources[0];
     this.opts = opts || {};
     this.frames = [];        // cached ImageBitmap/canvas frames
     this.frameCount = 0;
@@ -62,14 +65,25 @@
 
     var self = this;
     ScrubStage.queue = ScrubStage.queue || [];
+    // If a source fails (e.g. local file not uploaded yet),
+    // quietly fall through to the next one in the chain.
+    this.video.addEventListener('error', function () {
+      self.srcIndex++;
+      if (self.srcIndex < self.sources.length) {
+        self.video.src = self.sources[self.srcIndex];
+        self.video.load();
+      }
+    });
     this.video.addEventListener('loadedmetadata', function () {
       self.duration = self.video.duration || 0;
       self.ready = true;
       self.resize();
       // Nudge decode so first paint is instant
       try { self.video.currentTime = 0.001; } catch (e) {}
-      ScrubStage.queue.push(self);
-      if (ScrubStage.queue.length === 1) self.startCache();
+      if (ScrubStage.queue.indexOf(self) === -1) {
+        ScrubStage.queue.push(self);
+        if (ScrubStage.queue.length === 1) self.startCache();
+      }
     });
     window.addEventListener('resize', function () { self.resize(); });
   }
@@ -87,54 +101,75 @@
      works even for cross-origin video without CORS headers (the
      canvas is tainted but still displays), so this never breaks.
      Runs while the user can already scrub the raw <video>. */
+  /* The cache never touches the visible <video>: a hidden clone
+     seeks through the file (the browser shares the download), so
+     the on-screen video stays free to follow the user's scroll.
+     Only when the whole cache is ready does the canvas take over. */
   ScrubStage.prototype.startCache = function () {
     if (this.caching || this.cached || prefersReduced) return;
     this.caching = true;
 
-    var self = this, v = this.video, i = 0, n = this.targetFrames;
-    var cap = this.opts.frameWidth || 1024;
-    var fw = Math.min(v.videoWidth || 1280, cap);
-    var fh = Math.round(fw * ((v.videoHeight || 720) / (v.videoWidth || 1280)));
+    var self = this, i = 0, n = this.targetFrames;
 
-    function grab() {
-      if (self.frames.length === 1) {
-        // First frame ready: switch to canvas now; video keeps
-        // seeking invisibly behind it while the cache fills.
+    var v = document.createElement('video');
+    v.muted = true;
+    v.setAttribute('playsinline', '');
+    v.preload = 'auto';
+    v.style.cssText = 'position:fixed;left:-9999px;top:0;width:2px;height:2px;opacity:0;pointer-events:none';
+    v.src = this.video.currentSrc || this.video.src;
+    document.body.appendChild(v);
+    v.load();
+
+    function finish(ok) {
+      self.cached = ok && self.frames.length >= 2;
+      self.caching = false;
+      self.frameCount = self.frames.length;
+      self.lastDrawn = -1;
+      if (self.cached) {
         var stage = self.section.querySelector('.hero__stage, .macro__stage, .engine__stage');
         if (stage) stage.classList.add('stage-ready');
+      } else {
+        self.frames = []; // incomplete cache is worse than none
       }
-      if (i >= n) {
-        self.cached = true;
-        self.caching = false;
-        self.frameCount = self.frames.length;
-        self.lastDrawn = -1;
-        // Hand the cache slot to the next stage in the queue
-        var q = ScrubStage.queue, at = q.indexOf(self);
-        if (at > -1 && q[at + 1]) q[at + 1].startCache();
-        return;
-      }
-      var t = (i / (n - 1)) * Math.max(0, self.duration - 0.05);
-      var done = false;
-      var guard = setTimeout(function () { onSeek(); }, 1200); // never stall the cache loop
-      function onSeek() {
-        if (done) return; done = true;
-        clearTimeout(guard);
-        v.removeEventListener('seeked', onSeek);
-        try {
-          var c = document.createElement('canvas');
-          c.width = fw; c.height = fh;
-          c.getContext('2d').drawImage(v, 0, 0, fw, fh);
-          self.frames[i] = c;
-        } catch (e) {
-          // Drawing failed — abandon cache, keep direct video scrubbing
-          self.caching = false; i = n; grab(); return;
-        }
-        i++; grab();
-      }
-      v.addEventListener('seeked', onSeek);
-      try { v.currentTime = t; } catch (e) { self.caching = false; clearTimeout(guard); }
+      try { v.removeAttribute('src'); v.load(); v.remove(); } catch (e) {}
+      // Hand the cache slot to the next stage in the queue
+      var q = ScrubStage.queue, at = q.indexOf(self);
+      if (at > -1 && q[at + 1]) q[at + 1].startCache();
     }
-    grab();
+
+    var metaGuard = setTimeout(function () { finish(false); }, 15000);
+    v.addEventListener('error', function () { clearTimeout(metaGuard); finish(false); });
+    v.addEventListener('loadedmetadata', function () {
+      clearTimeout(metaGuard);
+      var cap = self.opts.frameWidth || 1024;
+      var fw = Math.min(v.videoWidth || 1280, cap);
+      var fh = Math.round(fw * ((v.videoHeight || 720) / (v.videoWidth || 1280)));
+      var dur = v.duration || self.duration || 0;
+
+      function grab() {
+        if (i >= n) { finish(true); return; }
+        var t = (i / (n - 1)) * Math.max(0, dur - 0.05);
+        var done = false;
+        var guard = setTimeout(function () { onSeek(); }, 1200); // never stall the loop
+        function onSeek() {
+          if (done) return; done = true;
+          clearTimeout(guard);
+          v.removeEventListener('seeked', onSeek);
+          try {
+            var c = document.createElement('canvas');
+            c.width = fw; c.height = fh;
+            c.getContext('2d').drawImage(v, 0, 0, fw, fh);
+            self.frames[i] = c;
+          } catch (e) {
+            finish(false); return; // keep direct video scrubbing
+          }
+          i++; grab();
+        }
+        v.addEventListener('seeked', onSeek);
+        try { v.currentTime = t; } catch (e) { finish(false); clearTimeout(guard); }
+      }
+      grab();
+    });
   };
 
   ScrubStage.prototype.update = function () {
@@ -142,20 +177,21 @@
     this.progress = pinProgress(this.section);
     this.smooth = prefersReduced ? this.progress : lerp(this.smooth, this.progress, 0.12);
 
-    if (this.frames.length) {
-      // Draw from the (possibly partial) frame cache. While the
-      // cache is filling, clamp to the newest available frame.
-      var idx = Math.round(this.smooth * (this.targetFrames - 1));
-      idx = Math.min(idx, this.frames.length - 1);
+    if (this.cached && this.frames.length) {
+      var idx = Math.round(this.smooth * (this.frames.length - 1));
       if (idx !== this.lastDrawn && this.frames[idx]) {
         this.drawCover(this.frames[idx]);
         this.lastDrawn = idx;
       }
-    } else if (!this.caching) {
-      // Cache unavailable (failed) — direct video scrubbing fallback
+    } else {
+      // Cache not ready yet — scrub the visible video directly.
+      // Never queue seeks on top of each other; that is what janks.
       var t = this.smooth * Math.max(0, this.duration - 0.05);
-      if (Math.abs((this.video.currentTime || 0) - t) > 0.033 && this.video.readyState >= 2) {
-        try { this.video.currentTime = t; } catch (e) {}
+      var vd = this.video;
+      if (!vd.seeking && vd.readyState >= 2 && Math.abs((vd.currentTime || 0) - t) > 0.06) {
+        try {
+          if (vd.fastSeek) vd.fastSeek(t); else vd.currentTime = t;
+        } catch (e) {}
       }
     }
   };
@@ -181,9 +217,12 @@
   }
 
   var stages = [];
-  if (CFG.orbit)   stages.push(new ScrubStage('hero',   'heroVideo',   'heroCanvas',   pick(CFG.orbitLocal, CFG.orbit),   { frames: 84, frameWidth: 1152 }));
-  if (CFG.macro)   stages.push(new ScrubStage('macro',  'macroVideo',  'macroCanvas',  pick(CFG.macroLocal, CFG.macro),   { frames: 56, frameWidth: 960 }));
-  if (CFG.engine)  stages.push(new ScrubStage('engine', 'engineVideo', 'engineCanvas', pick(CFG.engineLocal, CFG.engine), { frames: 56, frameWidth: 960 }));
+  // Low-power machines get fewer, lighter frames — smoothness first.
+  var LOWPOWER = (navigator.deviceMemory && navigator.deviceMemory <= 4) ||
+                 (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 4);
+  if (CFG.orbit)   stages.push(new ScrubStage('hero',   'heroVideo',   'heroCanvas',   [CFG.orbitLocal, CFG.orbit],   { frames: LOWPOWER ? 56 : 84, frameWidth: LOWPOWER ? 896 : 1024 }));
+  if (CFG.macro)   stages.push(new ScrubStage('macro',  'macroVideo',  'macroCanvas',  [CFG.macroLocal, CFG.macro],   { frames: LOWPOWER ? 36 : 56, frameWidth: LOWPOWER ? 768 : 960 }));
+  if (CFG.engine)  stages.push(new ScrubStage('engine', 'engineVideo', 'engineCanvas', [CFG.engineLocal, CFG.engine], { frames: LOWPOWER ? 36 : 56, frameWidth: LOWPOWER ? 768 : 960 }));
 
   /* ---------------- Meridian progress ---------------- */
   var meridianFill = document.getElementById('meridianFill');
