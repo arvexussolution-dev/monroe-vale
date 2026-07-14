@@ -50,3 +50,21 @@ pa u `config.js` odkomentariši `orbitLocal/macroLocal/engineLocal` putanje.
 5. Edition of 88 — $48,000
 6. Private waitlist — CTA forma
 7. The Collection — Hudson, Manhattan, Pacific, Aspen, Liberty No. 01
+
+## Novo u v2
+
+- **Spirala kolekcije**: pinovana sekcija — kartice satova se smenjuju spiralnim ulaskom/izlaskom dok skrolujete, zatim potpuni grid 3×2 (Eclipse + 5 modela). Sada stoji IZNAD waitliste.
+- **Detalji sata**: klik na bilo koju karticu otvara prozor sa pričom, specifikacijama i cenom.
+- **Demo korpa**: dugme u gornjem desnom uglu; količine, ukupno, "Place order" potvrda. Bez naplate — demo.
+- **Hero čestice**: zlatna prašina lebdi ka gledaocu dok stranica miruje; nestaje čim krene scroll.
+- **Footer**: Powered by ARVEXUS Solution → https://arvexussolution.dev/
+
+## Slike satova
+
+Kartice trenutno koriste elegantne ugrađene placeholder brojčanike.
+Kad budete imali fotografije: ubacite ih u `assets/watches/` i u
+`config.js` popunite `watchImages`, npr:
+
+    watchImages: { hudson: 'assets/watches/hudson.png', ... }
+
+Eclipse automatski koristi hero fotografiju.

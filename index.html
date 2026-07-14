@@ -29,7 +29,13 @@
 
 <header class="topbar">
   <div class="topbar__brand">MONROE <span>&amp;</span> VALE</div>
-  <div class="topbar__city">NEW YORK</div>
+  <div class="topbar__right">
+    <div class="topbar__city">NEW YORK</div>
+    <button class="topbar__cart" id="cartBtn" aria-label="Open cart">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M5 8h14l-1.2 12.2a1.6 1.6 0 0 1-1.6 1.4H7.8a1.6 1.6 0 0 1-1.6-1.4L5 8Z"/><path d="M8.5 8V6.5a3.5 3.5 0 0 1 7 0V8"/></svg>
+      <span class="topbar__count" id="cartCount">0</span>
+    </button>
+  </div>
 </header>
 
 <main id="main">
@@ -41,6 +47,7 @@
       <canvas class="scrub-canvas" id="heroCanvas"></canvas>
       <video id="heroVideo" class="scrub-video" muted playsinline preload="auto"></video>
       <div class="hero__vignette"></div>
+      <canvas class="hero__dust" id="dustCanvas" aria-hidden="true"></canvas>
       <div class="hero__content">
         <p class="hero__eyebrow reveal" data-reveal>NEW YORK &nbsp;·&nbsp; HAUTE HORLOGERIE</p>
         <h1 class="hero__title" id="heroTitle" aria-label="MONROE &amp; VALE">
@@ -111,7 +118,25 @@
     <p class="edition__note reveal" data-reveal>Each case back hand-numbered. Delivered by appointment.</p>
   </section>
 
-  <!-- 06 · WAITLIST -->
+  <!-- 06 · THE COLLECTION — spiral showcase (pinned) -->
+  <section class="showcase" id="showcase" aria-label="The collection showcase">
+    <div class="showcase__stage">
+      <div class="showcase__head">
+        <p class="showcase__eyebrow">BEYOND THE ECLIPSE</p>
+        <h2 class="showcase__title">The Collection</h2>
+      </div>
+      <div class="showcase__orbit" id="spiralStage"></div>
+      <div class="showcase__dots" id="spiralDots" aria-hidden="true"></div>
+    </div>
+  </section>
+
+  <!-- 07 · THE COLLECTION — full grid -->
+  <section class="collection" id="collection">
+    <p class="collection__eyebrow reveal" data-reveal>ALL MODELS</p>
+    <div class="cgrid" id="collectionGrid"></div>
+  </section>
+
+  <!-- 08 · WAITLIST -->
   <section class="waitlist" id="waitlist">
     <div class="waitlist__inner">
       <h2 class="waitlist__title reveal" data-reveal>The private waitlist</h2>
@@ -124,53 +149,57 @@
     </div>
   </section>
 
-  <!-- 07 · THE COLLECTION -->
-  <section class="collection" id="collection">
-    <p class="collection__eyebrow reveal" data-reveal>BEYOND THE ECLIPSE</p>
-    <h2 class="collection__title reveal" data-reveal>The Collection</h2>
-    <div class="collection__grid">
-      <article class="watch reveal" data-reveal>
-        <p class="watch__idx">Hudson</p>
-        <h3 class="watch__name">Hudson Automatic</h3>
-        <p class="watch__desc">Inspired by the quiet strength of the Hudson River. Deep-blue dial, 41&nbsp;mm steel, sapphire glass, 100&nbsp;m.</p>
-        <p class="watch__price">$1,290</p>
-      </article>
-      <article class="watch reveal" data-reveal>
-        <p class="watch__idx">Manhattan</p>
-        <h3 class="watch__name">Manhattan Reserve</h3>
-        <p class="watch__desc">Black dial, gold detailing, black leather. 40&nbsp;mm. A limited series for evenings that matter.</p>
-        <p class="watch__price">$1,890</p>
-      </article>
-      <article class="watch reveal" data-reveal>
-        <p class="watch__idx">Pacific</p>
-        <h3 class="watch__name">Pacific Chronograph</h3>
-        <p class="watch__desc">Chronograph on a steel bracelet. 42&nbsp;mm, 200&nbsp;m. Built for the coast, at speed.</p>
-        <p class="watch__price">$1,490</p>
-      </article>
-      <article class="watch reveal" data-reveal>
-        <p class="watch__idx">Aspen</p>
-        <h3 class="watch__name">Aspen GMT</h3>
-        <p class="watch__desc">Forest-green dial, two time zones, brown leather. Built for those who move between cities.</p>
-        <p class="watch__price">$1,690</p>
-      </article>
-      <article class="watch reveal" data-reveal>
-        <p class="watch__idx">Liberty</p>
-        <h3 class="watch__name">Liberty No. 01</h3>
-        <p class="watch__desc">250 pieces, each engraved. Dark dial, one discreet red detail, walnut presentation box.</p>
-        <p class="watch__price">$2,450</p>
-      </article>
-    </div>
-  </section>
-
   <footer class="footer">
     <p class="footer__brand">MONROE <span>&amp;</span> VALE</p>
     <p class="footer__line">Time, Refined. &nbsp;·&nbsp; New York &nbsp;·&nbsp; Est. for the patient</p>
+    <p class="footer__powered">Powered by: <a href="https://arvexussolution.dev/" target="_blank" rel="noopener">ARVEXUS Solution</a></p>
   </footer>
 
 </main>
 
+<!-- Veil shared by modal & cart -->
+<div class="veil" id="veil" hidden></div>
+
+<!-- Watch detail modal -->
+<aside class="modal" id="watchModal" role="dialog" aria-modal="true" aria-labelledby="modalName" hidden>
+  <button class="modal__close" id="modalClose" aria-label="Close">&times;</button>
+  <div class="modal__media"><img id="modalImg" alt=""></div>
+  <div class="modal__body">
+    <p class="modal__idx" id="modalIdx"></p>
+    <h3 class="modal__name" id="modalName"></h3>
+    <p class="modal__story" id="modalStory"></p>
+    <ul class="modal__specs" id="modalSpecs"></ul>
+    <div class="modal__row">
+      <p class="modal__price" id="modalPrice"></p>
+      <button class="btn-gold" id="modalAdd">Add to cart</button>
+    </div>
+  </div>
+</aside>
+
+<!-- Cart drawer (demo) -->
+<aside class="cart" id="cartDrawer" role="dialog" aria-modal="true" aria-label="Your order" hidden>
+  <div class="cart__head">
+    <p>YOUR ORDER</p>
+    <button class="cart__close" id="cartClose" aria-label="Close cart">&times;</button>
+  </div>
+  <div class="cart__items" id="cartItems"></div>
+  <div class="cart__foot" id="cartFoot">
+    <div class="cart__total"><span>Total</span><strong id="cartTotal">$0</strong></div>
+    <p class="cart__note">Demo checkout — no payment is taken.</p>
+    <button class="btn-gold btn-wide" id="cartOrder">Place order</button>
+  </div>
+  <div class="cart__done" id="cartDone" hidden>
+    <p class="cart__done-mark">M<span>&amp;</span>V</p>
+    <p class="cart__done-title">Order received.</p>
+    <p class="cart__done-sub" id="cartDoneNo"></p>
+    <p class="cart__done-sub">Our concierge will write within a day.</p>
+  </div>
+</aside>
+
 <script src="vendor/lenis.min.js"></script>
 <script src="config.js"></script>
 <script src="main.js"></script>
+<script src="collection.js"></script>
+<script src="particles.js"></script>
 </body>
 </html>
