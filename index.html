@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MONROE &amp; VALE — The Eclipse Tourbillon</title>
+<meta name="description" content="The Eclipse. A tourbillon chronograph in grade-5 titanium. Edition of 88. Monroe & Vale, New York.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23060505'/%3E%3Ccircle cx='16' cy='16' r='11' fill='none' stroke='%23c9a35c' stroke-width='1.4'/%3E%3Cpath d='M16 8v8l5 4' fill='none' stroke='%23ece5d8' stroke-width='1.4' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- Loader -->
+<div class="loader" id="loader">
+  <div class="loader__mark">M<span>&amp;</span>V</div>
+  <div class="loader__bar"><i id="loaderBar"></i></div>
+</div>
+
+<!-- Meridian: fixed gold seconds-track progress line -->
+<div class="meridian" aria-hidden="true">
+  <div class="meridian__track">
+    <div class="meridian__fill" id="meridianFill"></div>
+    <div class="meridian__ticks" id="meridianTicks"></div>
+  </div>
+</div>
+
+<header class="topbar">
+  <div class="topbar__brand">MONROE <span>&amp;</span> VALE</div>
+  <div class="topbar__city">NEW YORK</div>
+</header>
+
+<main id="main">
+
+  <!-- 01 · HERO — scroll-scrubbed 360° orbit -->
+  <section class="hero" id="hero" data-scrub-len="3.2">
+    <div class="hero__stage">
+      <img class="scrub-poster" id="heroPoster" alt="The Eclipse — brushed black titanium tourbillon chronograph" decoding="async">
+      <canvas class="scrub-canvas" id="heroCanvas"></canvas>
+      <video id="heroVideo" class="scrub-video" muted playsinline preload="auto"></video>
+      <div class="hero__vignette"></div>
+      <div class="hero__content">
+        <p class="hero__eyebrow reveal" data-reveal>NEW YORK &nbsp;·&nbsp; HAUTE HORLOGERIE</p>
+        <h1 class="hero__title" id="heroTitle" aria-label="MONROE &amp; VALE">
+          <span class="tin">M</span><span class="tin">O</span><span class="tin">N</span><span class="tin">R</span><span class="tin">O</span><span class="tin">E</span><span class="tin tin--amp">&amp;</span><span class="tin">V</span><span class="tin">A</span><span class="tin">L</span><span class="tin">E</span>
+        </h1>
+        <p class="hero__sub reveal" data-reveal>The Eclipse. A tourbillon, kept in the dark.</p>
+      </div>
+      <div class="hero__cue">
+        <span></span>
+        <p>Scroll to turn the crown</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 02 · CRAFTED IN DARKNESS — pinned story -->
+  <section class="dark" id="dark" data-scrub-len="2.6">
+    <div class="dark__stage">
+      <div class="dark__lines">
+        <p class="dark__line" data-line>Crafted in darkness.</p>
+        <p class="dark__line" data-line>Nine months on a single movement.</p>
+        <p class="dark__line" data-line>Light is the only witness.</p>
+      </div>
+      <div class="dark__rule"></div>
+      <p class="dark__caption">TIME, REFINED.</p>
+    </div>
+  </section>
+
+  <!-- 03 · MACRO — scroll-scrubbed dial fly-through -->
+  <section class="macro" id="macro" data-scrub-len="3">
+    <div class="macro__stage">
+      <canvas class="scrub-canvas" id="macroCanvas"></canvas>
+      <video id="macroVideo" class="scrub-video" muted playsinline preload="auto"></video>
+      <div class="macro__copy">
+        <p class="macro__word" data-word>Engraved indices.</p>
+        <p class="macro__word" data-word>A cage that breathes.</p>
+        <p class="macro__word" data-word>Metal, listening.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 04 · ENGINEERING — exploded assembly + spec callouts -->
+  <section class="engine" id="engine" data-scrub-len="3">
+    <div class="engine__stage">
+      <canvas class="scrub-canvas" id="engineCanvas"></canvas>
+      <video id="engineVideo" class="scrub-video" muted playsinline preload="auto"></video>
+      <div class="engine__specs">
+        <div class="spec" data-spec>
+          <p class="spec__value">42<em>mm</em></p>
+          <p class="spec__label">Grade-5 titanium</p>
+        </div>
+        <div class="spec" data-spec>
+          <p class="spec__value">72<em>h</em></p>
+          <p class="spec__label">Power reserve</p>
+        </div>
+        <div class="spec" data-spec>
+          <p class="spec__value">217</p>
+          <p class="spec__label">Components</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 05 · EDITION -->
+  <section class="edition" id="edition">
+    <p class="edition__eyebrow reveal" data-reveal>THE ECLIPSE TOURBILLON CHRONOGRAPH</p>
+    <h2 class="edition__title reveal" data-reveal>Edition of <em>88</em></h2>
+    <p class="edition__price reveal" data-reveal>$48,000</p>
+    <p class="edition__note reveal" data-reveal>Each case back hand-numbered. Delivered by appointment.</p>
+  </section>
+
+  <!-- 06 · WAITLIST -->
+  <section class="waitlist" id="waitlist">
+    <div class="waitlist__inner">
+      <h2 class="waitlist__title reveal" data-reveal>The private waitlist</h2>
+      <p class="waitlist__sub reveal" data-reveal>Eighty-eight pieces. Fewer conversations.</p>
+      <form class="waitlist__form reveal" data-reveal id="waitlistForm" novalidate>
+        <input type="email" id="waitlistEmail" placeholder="Your email" aria-label="Email address" required>
+        <button type="submit">Request a place</button>
+      </form>
+      <p class="waitlist__ok" id="waitlistOk">Received. We write back within a week.</p>
+    </div>
+  </section>
+
+  <!-- 07 · THE COLLECTION -->
+  <section class="collection" id="collection">
+    <p class="collection__eyebrow reveal" data-reveal>BEYOND THE ECLIPSE</p>
+    <h2 class="collection__title reveal" data-reveal>The Collection</h2>
+    <div class="collection__grid">
+      <article class="watch reveal" data-reveal>
+        <p class="watch__idx">Hudson</p>
+        <h3 class="watch__name">Hudson Automatic</h3>
+        <p class="watch__desc">Inspired by the quiet strength of the Hudson River. Deep-blue dial, 41&nbsp;mm steel, sapphire glass, 100&nbsp;m.</p>
+        <p class="watch__price">$1,290</p>
+      </article>
+      <article class="watch reveal" data-reveal>
+        <p class="watch__idx">Manhattan</p>
+        <h3 class="watch__name">Manhattan Reserve</h3>
+        <p class="watch__desc">Black dial, gold detailing, black leather. 40&nbsp;mm. A limited series for evenings that matter.</p>
+        <p class="watch__price">$1,890</p>
+      </article>
+      <article class="watch reveal" data-reveal>
+        <p class="watch__idx">Pacific</p>
+        <h3 class="watch__name">Pacific Chronograph</h3>
+        <p class="watch__desc">Chronograph on a steel bracelet. 42&nbsp;mm, 200&nbsp;m. Built for the coast, at speed.</p>
+        <p class="watch__price">$1,490</p>
+      </article>
+      <article class="watch reveal" data-reveal>
+        <p class="watch__idx">Aspen</p>
+        <h3 class="watch__name">Aspen GMT</h3>
+        <p class="watch__desc">Forest-green dial, two time zones, brown leather. Built for those who move between cities.</p>
+        <p class="watch__price">$1,690</p>
+      </article>
+      <article class="watch reveal" data-reveal>
+        <p class="watch__idx">Liberty</p>
+        <h3 class="watch__name">Liberty No. 01</h3>
+        <p class="watch__desc">250 pieces, each engraved. Dark dial, one discreet red detail, walnut presentation box.</p>
+        <p class="watch__price">$2,450</p>
+      </article>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <p class="footer__brand">MONROE <span>&amp;</span> VALE</p>
+    <p class="footer__line">Time, Refined. &nbsp;·&nbsp; New York &nbsp;·&nbsp; Est. for the patient</p>
+  </footer>
+
+</main>
+
+<script src="vendor/lenis.min.js"></script>
+<script src="config.js"></script>
+<script src="main.js"></script>
+</body>
+</html>
