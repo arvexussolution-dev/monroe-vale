@@ -1,9 +1,17 @@
 /* ============================================================
-   MONROE & VALE — Eclipse
-   Scroll engine: Lenis smooth scroll + three scroll-scrubbed
-   video stages. Each stage scrubs video.currentTime immediately,
-   and in the background extracts a frame cache into canvases;
-   once cached, scrubbing switches to canvas frames (buttery).
+   MONROE & VALE — Eclipse  (v5 performance rewrite)
+   -----------------------------------------------------------
+   Key changes vs v4:
+   • Only ONE video loads at start (the hero orbit). Macro and
+     engine videos are lazy — they do not touch the network
+     until the user scrolls near them.
+   • Direct video seeking is GONE. The visible <video> just
+     plays once into a poster, then hides. Scrubbing only ever
+     uses cached canvas frames or — until the cache finishes —
+     holds the poster/first‑frame still. Result: zero seek jank.
+   • A single consolidated rAF drives everything.
+   • Particle budgets live in this file so they can be tuned in
+     one place (see PERF object).
    ============================================================ */
 
 (function () {
@@ -11,27 +19,37 @@
 
   var prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-  /* ---------------- Lenis smooth scroll ---------------- */
+  /* ---------- Perf knobs (exported for particles.js) ---------- */
+  var LP = (navigator.deviceMemory && navigator.deviceMemory <= 4) ||
+           (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 4);
+  window.MV_PERF = {
+    lowPower: LP,
+    heroDust: LP ? 60 : 120,
+    edgeStars: LP ? 40 : 72,
+    cardDust: LP ? 24 : 42,
+    heroFrames: LP ? 40 : 72,
+    clipFrames: LP ? 28 : 48,
+    frameWidth: LP ? 768 : 960
+  };
+
+  /* ---------- Lenis ---------- */
   var lenis = null;
   if (window.Lenis && !prefersReduced) {
-    lenis = new Lenis({ lerp: 0.09, wheelMultiplier: 1, smoothWheel: true });
+    lenis = new Lenis({ lerp: 0.08, wheelMultiplier: 0.9, smoothWheel: true, touchMultiplier: 1.2 });
     function raf(t) { lenis.raf(t); requestAnimationFrame(raf); }
     requestAnimationFrame(raf);
   }
   window.__lenis = lenis;
 
   var clamp = function (v, a, b) { return Math.min(b, Math.max(a, v)); };
-  var lerp = function (a, b, t) { return a + (b - a) * t; };
+  var lerp  = function (a, b, t) { return a + (b - a) * t; };
 
-  /* ---------------- Section pin lengths ----------------
-     Each pinned section gets extra scroll length via a spacer:
-     section height = 100vh * (1 + data-scrub-len).            */
+  /* ---------- Pin lengths ---------- */
   document.querySelectorAll('[data-scrub-len]').forEach(function (sec) {
     var len = parseFloat(sec.getAttribute('data-scrub-len')) || 2;
     sec.style.height = (100 * (1 + len)) + 'vh';
   });
 
-  /* Progress 0..1 of a pinned section (sticky stage) */
   function pinProgress(sec) {
     var rect = sec.getBoundingClientRect();
     var total = sec.offsetHeight - window.innerHeight;
@@ -39,83 +57,78 @@
     return clamp(-rect.top / total, 0, 1);
   }
 
-  /* ---------------- Video scrub stage ---------------- */
-  function ScrubStage(sectionId, videoId, canvasId, src, opts) {
-    this.section = document.getElementById(sectionId);
-    this.video = document.getElementById(videoId);
-    this.canvas = document.getElementById(canvasId);
-    this.ctx = this.canvas.getContext('2d');
-    this.sources = Array.isArray(src) ? src.filter(Boolean) : [src];
-    this.srcIndex = 0;
-    src = this.sources[0];
-    this.opts = opts || {};
-    this.frames = [];        // cached ImageBitmap/canvas frames
+  /* ============================================================
+     ScrubStage — lazy, cache-only, no direct seeks
+     ============================================================ */
+  function ScrubStage(sectionId, videoId, canvasId, srcs, opts) {
+    this.section  = document.getElementById(sectionId);
+    this.video    = document.getElementById(videoId);
+    this.canvas   = document.getElementById(canvasId);
+    this.ctx      = this.canvas.getContext('2d');
+    this.srcs     = (Array.isArray(srcs) ? srcs : [srcs]).filter(Boolean);
+    this.opts     = opts || {};
+    this.frames   = [];
     this.frameCount = 0;
-    this.targetFrames = this.opts.frames || 96;
-    this.ready = false;      // metadata loaded
-    this.cached = false;     // frame cache complete
-    this.caching = false;
+    this.targetFrames = this.opts.frames || 48;
+    this.cached   = false;
+    this.caching  = false;
     this.progress = 0;
-    this.smooth = 0;
+    this.smooth   = 0;
     this.lastDrawn = -1;
     this.duration = 0;
+    this.loaded   = false;  // true once we start loading this stage
+    this.ready    = false;
+    window.addEventListener('resize', this.resize.bind(this));
+  }
 
-    this.video.src = src;
-    this.video.load();
-
-    var self = this;
-    ScrubStage.queue = ScrubStage.queue || [];
-    // If a source fails (e.g. local file not uploaded yet),
-    // quietly fall through to the next one in the chain.
-    this.video.addEventListener('error', function () {
-      self.srcIndex++;
-      if (self.srcIndex < self.sources.length) {
-        self.video.src = self.sources[self.srcIndex];
-        self.video.load();
-      }
-    });
+  /* Lazy init: don't touch the network until called */
+  ScrubStage.prototype.load = function () {
+    if (this.loaded) return;
+    this.loaded = true;
+    var self = this, idx = 0;
+    function tryNext() {
+      if (idx >= self.srcs.length) return; // all failed — poster stays
+      self.video.src = self.srcs[idx];
+      self.video.load();
+    }
+    this.video.addEventListener('error', function () { idx++; tryNext(); });
     this.video.addEventListener('loadedmetadata', function () {
       self.duration = self.video.duration || 0;
       self.ready = true;
       self.resize();
-      // Nudge decode so first paint is instant
+      // Draw first frame as poster
       try { self.video.currentTime = 0.001; } catch (e) {}
-      if (ScrubStage.queue.indexOf(self) === -1) {
-        ScrubStage.queue.push(self);
-        if (ScrubStage.queue.length === 1) self.startCache();
-      }
+      self.video.addEventListener('seeked', function first() {
+        self.video.removeEventListener('seeked', first);
+        try {
+          self.drawCover(self.video);
+          self.lastDrawn = -99; // mark first-frame drawn
+        } catch (e) {}
+        self.startCache();
+      }, { once: true });
     });
-    window.addEventListener('resize', function () { self.resize(); });
-  }
+    tryNext();
+  };
 
   ScrubStage.prototype.resize = function () {
     var dpr = Math.min(window.devicePixelRatio || 1, 2);
     var w = this.section.clientWidth, h = window.innerHeight;
-    this.canvas.width = Math.round(w * dpr);
+    this.canvas.width  = Math.round(w * dpr);
     this.canvas.height = Math.round(h * dpr);
-    this.lastDrawn = -1; // force redraw
+    this.lastDrawn = -1;
   };
 
-  /* Background frame extraction: seek through the video once,
-     drawing each frame into its own offscreen canvas. drawImage
-     works even for cross-origin video without CORS headers (the
-     canvas is tainted but still displays), so this never breaks.
-     Runs while the user can already scrub the raw <video>. */
-  /* The cache never touches the visible <video>: a hidden clone
-     seeks through the file (the browser shares the download), so
-     the on-screen video stays free to follow the user's scroll.
-     Only when the whole cache is ready does the canvas take over. */
+  /* Cache runs on a hidden clone — never blocks the UI thread's
+     compositing. The visible video is paused and invisible. */
   ScrubStage.prototype.startCache = function () {
     if (this.caching || this.cached || prefersReduced) return;
     this.caching = true;
-
     var self = this, i = 0, n = this.targetFrames;
 
     var v = document.createElement('video');
-    v.muted = true;
-    v.setAttribute('playsinline', '');
+    v.muted = true; v.setAttribute('playsinline', '');
     v.preload = 'auto';
-    v.style.cssText = 'position:fixed;left:-9999px;top:0;width:2px;height:2px;opacity:0;pointer-events:none';
+    v.style.cssText = 'position:fixed;left:-9999px;top:0;width:1px;height:1px;opacity:0;pointer-events:none';
     v.src = this.video.currentSrc || this.video.src;
     document.body.appendChild(v);
     v.load();
@@ -128,20 +141,19 @@
       if (self.cached) {
         var stage = self.section.querySelector('.hero__stage, .macro__stage, .engine__stage');
         if (stage) stage.classList.add('stage-ready');
+        // Hide the real video entirely — canvas owns this stage now
+        self.video.style.display = 'none';
       } else {
-        self.frames = []; // incomplete cache is worse than none
+        self.frames = [];
       }
       try { v.removeAttribute('src'); v.load(); v.remove(); } catch (e) {}
-      // Hand the cache slot to the next stage in the queue
-      var q = ScrubStage.queue, at = q.indexOf(self);
-      if (at > -1 && q[at + 1]) q[at + 1].startCache();
     }
 
-    var metaGuard = setTimeout(function () { finish(false); }, 15000);
+    var metaGuard = setTimeout(function () { finish(false); }, 20000);
     v.addEventListener('error', function () { clearTimeout(metaGuard); finish(false); });
     v.addEventListener('loadedmetadata', function () {
       clearTimeout(metaGuard);
-      var cap = self.opts.frameWidth || 1024;
+      var cap = self.opts.frameWidth || 960;
       var fw = Math.min(v.videoWidth || 1280, cap);
       var fh = Math.round(fw * ((v.videoHeight || 720) / (v.videoWidth || 1280)));
       var dur = v.duration || self.duration || 0;
@@ -150,7 +162,7 @@
         if (i >= n) { finish(true); return; }
         var t = (i / (n - 1)) * Math.max(0, dur - 0.05);
         var done = false;
-        var guard = setTimeout(function () { onSeek(); }, 1200); // never stall the loop
+        var guard = setTimeout(onSeek, 1500);
         function onSeek() {
           if (done) return; done = true;
           clearTimeout(guard);
@@ -160,10 +172,10 @@
             c.width = fw; c.height = fh;
             c.getContext('2d').drawImage(v, 0, 0, fw, fh);
             self.frames[i] = c;
-          } catch (e) {
-            finish(false); return; // keep direct video scrubbing
-          }
-          i++; grab();
+          } catch (e) { finish(false); return; }
+          i++;
+          // Yield to the main thread every frame so scrolling stays smooth
+          setTimeout(grab, 4);
         }
         v.addEventListener('seeked', onSeek);
         try { v.currentTime = t; } catch (e) { finish(false); clearTimeout(guard); }
@@ -172,8 +184,9 @@
     });
   };
 
+  /* Update: canvas frames ONLY — never seeks the visible video */
   ScrubStage.prototype.update = function () {
-    if (!this.ready) return;
+    if (!this.loaded) return;
     this.progress = pinProgress(this.section);
     this.smooth = prefersReduced ? this.progress : lerp(this.smooth, this.progress, 0.12);
 
@@ -183,48 +196,40 @@
         this.drawCover(this.frames[idx]);
         this.lastDrawn = idx;
       }
-    } else {
-      // Cache not ready yet — scrub the visible video directly.
-      // Never queue seeks on top of each other; that is what janks.
-      var t = this.smooth * Math.max(0, this.duration - 0.05);
-      var vd = this.video;
-      if (!vd.seeking && vd.readyState >= 2 && Math.abs((vd.currentTime || 0) - t) > 0.06) {
-        try {
-          if (vd.fastSeek) vd.fastSeek(t); else vd.currentTime = t;
-        } catch (e) {}
-      }
     }
+    // If not cached yet: first-frame poster stays. No seeking = no jank.
   };
 
   ScrubStage.prototype.drawCover = function (bmp) {
     var cw = this.canvas.width, ch = this.canvas.height;
-    var bw = bmp.width, bh = bmp.height;
+    var bw = bmp.width || bmp.videoWidth || cw;
+    var bh = bmp.height || bmp.videoHeight || ch;
     var scale = Math.max(cw / bw, ch / bh);
     var dw = bw * scale, dh = bh * scale;
     this.ctx.drawImage(bmp, (cw - dw) / 2, (ch - dh) / 2, dw, dh);
   };
 
-  /* ---------------- Build the three stages ---------------- */
+  /* ---------- Build stages (lazy: only hero loads immediately) ---------- */
   var CFG = window.MV_MEDIA || {};
-  function pick(local, remote) {
-    // Prefer a local file in ./assets if the user downloaded clips; fall back to CDN.
-    return local ? local : remote;
-  }
+  var P = window.MV_PERF;
 
   var heroPoster = document.getElementById('heroPoster');
   if (heroPoster && (CFG.posterLocal || CFG.poster)) {
-    heroPoster.src = pick(CFG.posterLocal, CFG.poster);
+    heroPoster.src = CFG.posterLocal || CFG.poster;
   }
 
   var stages = [];
-  // Low-power machines get fewer, lighter frames — smoothness first.
-  var LOWPOWER = (navigator.deviceMemory && navigator.deviceMemory <= 4) ||
-                 (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 4);
-  if (CFG.orbit)   stages.push(new ScrubStage('hero',   'heroVideo',   'heroCanvas',   [CFG.orbitLocal, CFG.orbit],   { frames: LOWPOWER ? 56 : 84, frameWidth: LOWPOWER ? 896 : 1024 }));
-  if (CFG.macro)   stages.push(new ScrubStage('macro',  'macroVideo',  'macroCanvas',  [CFG.macroLocal, CFG.macro],   { frames: LOWPOWER ? 36 : 56, frameWidth: LOWPOWER ? 768 : 960 }));
-  if (CFG.engine)  stages.push(new ScrubStage('engine', 'engineVideo', 'engineCanvas', [CFG.engineLocal, CFG.engine], { frames: LOWPOWER ? 36 : 56, frameWidth: LOWPOWER ? 768 : 960 }));
+  if (CFG.orbit || CFG.orbitLocal)
+    stages.push(new ScrubStage('hero',   'heroVideo',  'heroCanvas',  [CFG.orbitLocal, CFG.orbit],   { frames: P.heroFrames, frameWidth: P.frameWidth }));
+  if (CFG.macro || CFG.macroLocal)
+    stages.push(new ScrubStage('macro',  'macroVideo', 'macroCanvas', [CFG.macroLocal, CFG.macro],   { frames: P.clipFrames, frameWidth: P.frameWidth }));
+  if (CFG.engine || CFG.engineLocal)
+    stages.push(new ScrubStage('engine', 'engineVideo','engineCanvas',[CFG.engineLocal, CFG.engine], { frames: P.clipFrames, frameWidth: P.frameWidth }));
 
-  /* ---------------- Meridian progress ---------------- */
+  // Hero loads immediately; others wait until user scrolls near
+  if (stages[0]) stages[0].load();
+
+  /* ---------- Meridian progress ---------- */
   var meridianFill = document.getElementById('meridianFill');
   var ticksWrap = document.getElementById('meridianTicks');
   for (var i = 0; i <= 12; i++) {
@@ -239,15 +244,14 @@
     return max > 0 ? clamp((window.scrollY || h.scrollTop) / max, 0, 1) : 0;
   }
 
-  /* ---------------- Pinned text choreography ---------------- */
-  function stagger(els, p, seg) {
-    // Distribute elements across progress; each fades in then out.
+  /* ---------- Pinned text choreography ---------- */
+  function stagger(els, p) {
     var n = els.length;
     els.forEach(function (el, i) {
       var start = i / n, end = (i + 1) / n;
       var local = clamp((p - start) / (end - start), 0, 1);
       var inA = clamp(local / 0.25, 0, 1);
-      var outA = seg === 'hold' && i === n - 1 ? 0 : clamp((local - 0.75) / 0.25, 0, 1);
+      var outA = i === n - 1 ? 0 : clamp((local - 0.75) / 0.25, 0, 1);
       var a = inA * (1 - outA);
       el.style.opacity = a;
       el.style.transform = 'translateY(' + (24 * (1 - inA) - 12 * outA) + 'px)';
@@ -255,15 +259,14 @@
     });
   }
 
-  var darkSec = document.getElementById('dark');
-  var darkLines = Array.prototype.slice.call(document.querySelectorAll('[data-line]'));
-  var macroSec = document.getElementById('macro');
-  var macroWords = Array.prototype.slice.call(document.querySelectorAll('[data-word]'));
+  var darkSec   = document.getElementById('dark');
+  var darkLines = [].slice.call(document.querySelectorAll('[data-line]'));
+  var macroSec  = document.getElementById('macro');
+  var macroWords= [].slice.call(document.querySelectorAll('[data-word]'));
   var engineSec = document.getElementById('engine');
-  var specs = Array.prototype.slice.call(document.querySelectorAll('[data-spec]'));
+  var specs     = [].slice.call(document.querySelectorAll('[data-spec]'));
 
   function updateSpecs(p) {
-    // Specs slide in one by one across the last 60% of the pin.
     specs.forEach(function (el, i) {
       var start = 0.35 + i * 0.18;
       var a = clamp((p - start) / 0.14, 0, 1);
@@ -272,18 +275,39 @@
     });
   }
 
-  /* ---------------- Main rAF loop ---------------- */
-  function frame() {
-    stages.forEach(function (s) { s.update(); });
-    meridianFill.style.height = (docProgress() * 100) + '%';
-    stagger(darkLines, pinProgress(darkSec), 'hold');
-    stagger(macroWords, pinProgress(macroSec), 'hold');
-    updateSpecs(pinProgress(engineSec));
-    requestAnimationFrame(frame);
-  }
-  requestAnimationFrame(frame);
+  /* ============================================================
+     SINGLE rAF — everything in one loop, visibility-gated
+     ============================================================ */
+  var VH = window.innerHeight;
+  window.addEventListener('resize', function () { VH = window.innerHeight; });
 
-  /* ---------------- IntersectionObserver reveals ---------------- */
+  function isNear(el, margin) {
+    if (!el) return false;
+    var r = el.getBoundingClientRect();
+    return r.bottom > -margin && r.top < VH + margin;
+  }
+
+  function mainLoop() {
+    // Meridian (always)
+    meridianFill.style.height = (docProgress() * 100) + '%';
+
+    // Lazy-load stages when they approach the viewport
+    for (var si = 0; si < stages.length; si++) {
+      var s = stages[si];
+      if (!s.loaded && isNear(s.section, VH * 1.5)) s.load();
+      if (isNear(s.section, VH * 0.5)) s.update();
+    }
+
+    // Text choreography — only when visible
+    if (isNear(darkSec, 200))   stagger(darkLines, pinProgress(darkSec));
+    if (isNear(macroSec, 200))  stagger(macroWords, pinProgress(macroSec));
+    if (isNear(engineSec, 200)) updateSpecs(pinProgress(engineSec));
+
+    requestAnimationFrame(mainLoop);
+  }
+  requestAnimationFrame(mainLoop);
+
+  /* ---------- IO reveals ---------- */
   var io = new IntersectionObserver(function (entries) {
     entries.forEach(function (e) {
       if (e.isIntersecting) { e.target.classList.add('is-in'); io.unobserve(e.target); }
@@ -291,17 +315,17 @@
   }, { threshold: 0.25 });
   document.querySelectorAll('[data-reveal]').forEach(function (el) { io.observe(el); });
 
-  /* ---------------- Hero title tracking-in ---------------- */
+  /* ---------- Hero title tracking-in ---------- */
   var heroTitle = document.getElementById('heroTitle');
-  var tins = heroTitle.querySelectorAll('.tin');
-  tins.forEach(function (t, i) { t.style.transitionDelay = (0.4 + i * 0.06) + 's'; });
+  heroTitle.querySelectorAll('.tin').forEach(function (t, i) {
+    t.style.transitionDelay = (0.4 + i * 0.06) + 's';
+  });
 
-  /* ---------------- Loader ---------------- */
+  /* ---------- Loader ---------- */
   var loader = document.getElementById('loader');
   var loaderBar = document.getElementById('loaderBar');
   var loadT = 0;
   var loadTimer = setInterval(function () {
-    // Progress driven by first video readiness, softened
     var v = document.getElementById('heroVideo');
     var target = v && v.readyState >= 2 ? 100 : Math.min(loadT + 4, 82);
     loadT = lerp(loadT, target, 0.2);
@@ -312,16 +336,15 @@
       heroTitle.classList.add('is-in');
     }
   }, 80);
-  // Hard fallback: never trap the user behind the loader
   setTimeout(function () {
     clearInterval(loadTimer);
     loader.classList.add('is-done');
     heroTitle.classList.add('is-in');
   }, 7000);
 
-  /* ---------------- Waitlist form ---------------- */
+  /* ---------- Waitlist ---------- */
   var form = document.getElementById('waitlistForm');
-  var ok = document.getElementById('waitlistOk');
+  var ok   = document.getElementById('waitlistOk');
   form.addEventListener('submit', function (e) {
     e.preventDefault();
     var email = document.getElementById('waitlistEmail');
