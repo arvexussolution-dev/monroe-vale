@@ -86,9 +86,13 @@ body{
 }
 .scrub-poster{z-index:0}
 .scrub-video{opacity:1;z-index:1;background:transparent}
-.scrub-canvas{opacity:0;z-index:2}
-.stage-ready .scrub-canvas{opacity:1}
-.stage-ready .scrub-video{opacity:0}
+/* The canvas is the ONLY visible layer of a stage. The <video>
+   element beneath it is never shown: it exists purely as a frame
+   source (it plays a silent, invisible sweep to fill the cache).
+   Until the first canvas paint, the poster image shows through. */
+.scrub-canvas{opacity:1;z-index:2}
+.scrub-video{opacity:0 !important;z-index:1;pointer-events:none}
+.stage-ready .scrub-poster{opacity:0;transition:opacity .6s ease}
 
 /* ---------- Hero ---------- */
 .hero__vignette{
@@ -525,4 +529,24 @@ html.mv-lock,html.mv-lock body{overflow:hidden}
   .modal__stage{min-height:300px}
   .modal__row{flex-direction:column;align-items:stretch;gap:1.1rem}
   .modal__perks{grid-template-columns:1fr;gap:.8rem}
+}
+
+/* ---------- Hero copy readability + edge stars ---------- */
+.hero__content::before{
+  content:'';position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+  width:min(1100px,100vw);height:72%;z-index:-1;pointer-events:none;
+  background:radial-gradient(ellipse at center,rgba(4,3,3,.58) 0%,rgba(4,3,3,.30) 48%,transparent 74%);
+}
+.hero__eyebrow{
+  color:#dcbe7e;font-size:.66rem;
+  text-shadow:0 1px 14px rgba(0,0,0,.95),0 0 3px rgba(0,0,0,.9);
+}
+.hero__sub{
+  color:rgba(240,234,223,.94);
+  text-shadow:0 2px 18px rgba(0,0,0,.95),0 0 4px rgba(0,0,0,.8);
+}
+.hero__title{text-shadow:0 4px 34px rgba(0,0,0,.75)}
+.edge-stars{
+  position:absolute;inset:0;width:100%;height:100%;
+  z-index:2;pointer-events:none;
 }

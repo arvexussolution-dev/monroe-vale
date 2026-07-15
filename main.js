@@ -85,6 +85,10 @@
   ScrubStage.prototype.load = function () {
     if (this.loaded) return;
     this.loaded = true;
+    // The video element itself is never shown to the user: the canvas
+    // above it is the only thing on screen. This lets us play it
+    // silently to harvest frames without any visible playback.
+    this.video.style.opacity = '0';
     var self = this, idx = 0;
     function tryNext() {
       if (idx >= self.srcs.length) return; // all failed — poster stays
@@ -96,16 +100,11 @@
       self.duration = self.video.duration || 0;
       self.ready = true;
       self.resize();
-      // Draw first frame as poster
-      try { self.video.currentTime = 0.001; } catch (e) {}
-      self.video.addEventListener('seeked', function first() {
-        self.video.removeEventListener('seeked', first);
-        try {
-          self.drawCover(self.video);
-          self.lastDrawn = -99; // mark first-frame drawn
-        } catch (e) {}
-        self.startCache();
-      }, { once: true });
+      self.startCache();
+    });
+    // Paint whatever the video currently shows until the cache lands.
+    this.video.addEventListener('loadeddata', function () {
+      try { self.drawCover(self.video); } catch (e) {}
     });
     tryNext();
   };
@@ -120,7 +119,81 @@
 
   /* Cache runs on a hidden clone — never blocks the UI thread's
      compositing. The visible video is paused and invisible. */
+  /* Preferred path: let the video PLAY once, silently and hidden,
+     grabbing frames as they decode. Playback decoding is what
+     browsers optimise for — it never stalls the main thread the way
+     random seeking does. Requires requestVideoFrameCallback. */
   ScrubStage.prototype.startCache = function () {
+    if (this.caching || this.cached || prefersReduced) return;
+    this.caching = true;
+    var self = this;
+
+    var vv = this.video;
+    if (typeof vv.requestVideoFrameCallback === 'function') {
+      var n2 = this.targetFrames;
+      var cap2 = this.opts.frameWidth || 960;
+      var fw2 = Math.min(vv.videoWidth || 1280, cap2);
+      var fh2 = Math.round(fw2 * ((vv.videoHeight || 720) / (vv.videoWidth || 1280)));
+      var dur2 = vv.duration || 8;
+      var slots = new Array(n2);
+      var got = 0;
+
+      vv.muted = true;
+      vv.playbackRate = 2;               // finish the sweep quickly
+      var playing = vv.play();
+      if (playing && playing.catch) playing.catch(function () { self.cloneCache(); });
+
+      var onFrame = function (now, meta) {
+        var t = meta && typeof meta.mediaTime === 'number' ? meta.mediaTime : vv.currentTime;
+        var slot = Math.round((t / Math.max(0.001, dur2)) * (n2 - 1));
+        if (slot >= 0 && slot < n2 && !slots[slot]) {
+          try {
+            var c = document.createElement('canvas');
+            c.width = fw2; c.height = fh2;
+            c.getContext('2d').drawImage(vv, 0, 0, fw2, fh2);
+            slots[slot] = c; got++;
+          } catch (e) {}
+        }
+        if (vv.ended || got >= n2) { finishPlay(); return; }
+        vv.requestVideoFrameCallback(onFrame);
+      };
+      vv.requestVideoFrameCallback(onFrame);
+
+      var playGuard = setTimeout(function () { finishPlay(); }, 25000);
+      function finishPlay() {
+        clearTimeout(playGuard);
+        try { vv.pause(); } catch (e) {}
+        // Fill any gaps by holding the previous frame
+        var last = null, filled = 0;
+        for (var k = 0; k < n2; k++) {
+          if (slots[k]) { last = slots[k]; filled++; }
+          else if (last) slots[k] = last;
+        }
+        for (var k2 = n2 - 1; k2 >= 0; k2--) {
+          if (!slots[k2] && slots[k2 + 1]) slots[k2] = slots[k2 + 1];
+        }
+        if (filled >= Math.max(6, n2 * 0.5)) {
+          self.frames = slots;
+          self.cached = true;
+          self.caching = false;
+          self.frameCount = slots.length;
+          self.lastDrawn = -1;
+          var stage = self.section.querySelector('.hero__stage, .macro__stage, .engine__stage');
+          if (stage) stage.classList.add('stage-ready');
+          vv.style.display = 'none';
+        } else {
+          self.caching = false;
+          self.cloneCache();               // playback sweep failed — try seeking
+        }
+      }
+      return;
+    }
+    this.caching = false;
+    this.cloneCache();
+  };
+
+  /* Fallback for browsers without requestVideoFrameCallback */
+  ScrubStage.prototype.cloneCache = function () {
     if (this.caching || this.cached || prefersReduced) return;
     this.caching = true;
     var self = this, i = 0, n = this.targetFrames;
@@ -213,10 +286,13 @@
   var CFG = window.MV_MEDIA || {};
   var P = window.MV_PERF;
 
-  var heroPoster = document.getElementById('heroPoster');
-  if (heroPoster && (CFG.posterLocal || CFG.poster)) {
-    heroPoster.src = CFG.posterLocal || CFG.poster;
+  function setPoster(id, url) {
+    var el = document.getElementById(id);
+    if (el && url) el.src = url;
   }
+  setPoster('heroPoster',   CFG.posterLocal || CFG.poster);
+  setPoster('macroPoster',  CFG.macroPoster);
+  setPoster('enginePoster', CFG.enginePoster);
 
   var stages = [];
   if (CFG.orbit || CFG.orbitLocal)

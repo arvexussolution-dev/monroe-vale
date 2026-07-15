@@ -5,6 +5,9 @@
 window.MV_MEDIA = {
   poster: 'https://d8j0ntlcm91z4.cloudfront.net/user_3GDmPHEJHZ0gj0bKJ4YoVfVIUHU/hf_20260713_180209_fbeaf2d4-5024-467b-b938-cd9fc1cba905.png',
   posterLocal: null, // 'assets/poster.png'
+  /* Still frames shown while each clip's frame cache fills. */
+  macroPoster:  'assets/watches/eclipse/2.jpg',
+  enginePoster: 'assets/watches/eclipse/4.jpg',
   /* Collection card photos — drop files into assets/watches/ and
      set e.g. hudson: 'assets/watches/hudson.png'. Null = elegant
      built-in dial placeholder. Eclipse defaults to the hero poster. */
